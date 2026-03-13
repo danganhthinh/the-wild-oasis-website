@@ -1,5 +1,5 @@
-const API_URL = "http://localhost:3000/api";
-const IMAGE_URL_BASE = "http://localhost:3000";
+const API_URL = `${process.env.NEXT_PUBLIC_API_URL}/api`;
+const IMAGE_URL_BASE = process.env.NEXT_PUBLIC_API_URL;
 
 const mapCabinImage = (cabin) => {
   if (!cabin) return cabin;

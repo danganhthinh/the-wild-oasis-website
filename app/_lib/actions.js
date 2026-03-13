@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { auth, signIn, signOut } from "./auth";
 import { redirect } from "next/navigation";
 
-const API_URL = "http://localhost:3000/api";
+const API_URL = `${process.env.NEXT_PUBLIC_API_URL}/api`;
 
 async function authenticatedFetch(path, options = {}) {
   const session = await auth();
