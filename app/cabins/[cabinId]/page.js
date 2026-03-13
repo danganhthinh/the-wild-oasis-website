@@ -2,6 +2,7 @@ import Cabin from "@/app/_components/Cabin";
 import Reservation from "@/app/_components/Reservation";
 import Spinner from "@/app/_components/Spinner";
 import { getCabin, getCabins } from "@/app/_lib/data-service";
+import { notFound } from "next/navigation";
 import { Suspense } from "react";
 // PLACEHOLDER DATA
 // const cabin = {
@@ -19,21 +20,24 @@ import { Suspense } from "react";
 //   title: "cabin - ",
 // };
 export async function generateMetadata({ params }) {
-  const { name } = await getCabin(params.cabinId);
+  const cabin = await getCabin(params.cabinId);
+  if (!cabin) return { title: "Cabin Not Found" };
   return {
-    title: `Cabin ${name}`,
+    title: `Cabin ${cabin.name}`,
   };
 }
 export async function generateStaticParams() {
   const cabins = await getCabins();
-  const ids = cabins.map((cabin) => ({
-    cabinId: cabin.id.toString(),
-  }));
-  return ids;
+  return cabins
+    .filter((cabin) => cabin._id || cabin.id)
+    .map((cabin) => ({
+      cabinId: (cabin._id || cabin.id).toString(),
+    }));
 }
 export const revalidate = 0;
 export default async function Page({ params }) {
   const cabin = await getCabin(params.cabinId);
+  if (!cabin) notFound();
   return (
     <div className="max-w-6xl mx-auto mt-8">
       <Cabin cabin={cabin} />

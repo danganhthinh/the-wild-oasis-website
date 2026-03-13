@@ -1,6 +1,7 @@
 import NextAuth from "next-auth";
 import Google from "next-auth/providers/google";
 import { getGuest, createGuest } from "./data-service";
+
 const authConfig = {
   providers: [
     Google({
@@ -8,28 +9,40 @@ const authConfig = {
       clientSecret: process.env.AUTH_GOOGLE_SECRET,
     }),
   ],
+  secret: process.env.AUTH_SECRET,
   callbacks: {
     authorized({ auth, request }) {
       return !!auth?.user;
     },
     async signIn({ user, account, profile }) {
       try {
-        const existingGuest = await getGuest(user.email);
-        if (!existingGuest) {
-          await createGuest({
-            email: user.email,
-            fullName: user.name,
-          });
-        }
+        // Authenticate with our NestJS Backend
+        const authData = await createGuest({
+          idToken: account.id_token,
+          email: user.email,
+          fullName: user.name,
+        });
+        
+        // Attach the token to the user object temporarily so it can be picked up by the jwt/session callbacks
+        user.accessToken = authData.access_token;
+        user.guestId = authData.guest._id;
+        
         return true;
       } catch (e) {
+        console.error("Backend Auth Error:", e);
         return false;
       }
     },
-    // the id is added autimatically in DB now we controll it in our session
-    async session({ session, user }) {
-      const guest = await getGuest(session.user.email);
-      session.user.guestId = guest.id;
+    async jwt({ token, user }) {
+      if (user) {
+        token.accessToken = user.accessToken;
+        token.guestId = user.guestId;
+      }
+      return token;
+    },
+    async session({ session, token }) {
+      session.user.accessToken = token.accessToken;
+      session.user.guestId = token.guestId;
       return session;
     },
   },
@@ -37,6 +50,7 @@ const authConfig = {
     signIn: "/login",
   },
 };
+
 export const {
   auth,
   signIn,

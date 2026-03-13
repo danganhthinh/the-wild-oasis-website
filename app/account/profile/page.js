@@ -20,14 +20,18 @@ export default async function Page() {
         Providing the following information will make your check-in process
         faster and smoother. See you soon!
       </p>
-      <UpdatedProfileForm guest={guest}>
-        <SelectCountry
-          name="nationality"
-          id="nationality"
-          className="px-5 py-3 bg-primary-200 text-primary-800 w-full shadow-sm rounded-sm"
-          defaultCountry={guest.nationality}
-        />
-      </UpdatedProfileForm>
+      {guest ? (
+        <UpdatedProfileForm guest={guest}>
+          <SelectCountry
+            name="nationality"
+            id="nationality"
+            className="px-5 py-3 bg-primary-200 text-primary-800 w-full shadow-sm rounded-sm"
+            defaultCountry={guest.nationality}
+          />
+        </UpdatedProfileForm>
+      ) : (
+        <p className="text-lg text-primary-200">Please contact support to complete your profile.</p>
+      )}
     </div>
   );
 }

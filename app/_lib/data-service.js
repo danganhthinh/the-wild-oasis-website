@@ -1,226 +1,146 @@
-import { eachDayOfInterval } from "date-fns";
-import { supabase } from "./supabase";
-import { notFound } from "next/navigation";
-/////////////////////
-// GET
+const API_URL = "http://localhost:3000/api";
+const IMAGE_URL_BASE = "http://localhost:3000";
+
+const mapCabinImage = (cabin) => {
+  if (!cabin) return cabin;
+  // If image is a relative path like 'uploads/...', prepend IMAGE_URL_BASE
+  if (cabin.image && !cabin.image.startsWith("http")) {
+    return { ...cabin, image: `${IMAGE_URL_BASE}/${cabin.image}` };
+  }
+  return cabin;
+};
 
 export async function getCabin(id) {
-  const { data, error } = await supabase
-    .from("cabins")
-    .select("*")
-    .eq("id", id)
-    .single();
-
-  // For testing
-  // await new Promise((res) => setTimeout(res, 1000));
-
-  if (error) {
-    console.error(error);
-    notFound();
-  }
-
-  return data;
+  const res = await fetch(`${API_URL}/cabins/${id}`);
+  if (!res.ok) return null;
+  const data = await res.json();
+  return mapCabinImage(data);
 }
 
 export async function getCabinPrice(id) {
-  const { data, error } = await supabase
-    .from("cabins")
-    .select("regularPrice, discount")
-    .eq("id", id)
-    .single();
-
-  if (error) {
-    console.error(error);
-  }
-
-  return data;
+  const res = await fetch(`${API_URL}/cabins/${id}`); // We can filter fields if needed
+  if (!res.ok) return null;
+  const data = await res.json();
+  return { regularPrice: data.regularPrice, discount: data.discount };
 }
 
 export const getCabins = async function () {
-  const { data, error } = await supabase
-    .from("cabins")
-    .select("id, name, maxCapacity, regularPrice, discount, image")
-    .order("name");
-
-  if (error) {
-    console.error(error);
-    throw new Error("Cabins could not be loaded");
-  }
-
-  return data;
+  const res = await fetch(`${API_URL}/cabins`);
+  if (!res.ok) throw new Error("Cabins could not be loaded");
+  const data = await res.json();
+  return data.map(mapCabinImage);
 };
 
-// Guests are uniquely identified by their email address
 export async function getGuest(email) {
-  const { data, error } = await supabase
-    .from("guests")
-    .select("*")
-    .eq("email", email)
-    .single();
-
-  // No error here! We handle the possibility of no guest in the sign in callback
-  return data;
+  const res = await fetch(`${API_URL}/guests/email/${email}`);
+  if (!res.ok) return null;
+  return await res.json();
 }
 
-export async function getBooking(id) {
-  const { data, error, count } = await supabase
-    .from("bookings")
-    .select("*")
-    .eq("id", id)
-    .single();
+export async function getBooking(id, token) {
+  if (!token) return null;
 
-  if (error) {
-    console.error(error);
+  console.log(`Website API Request: GET /bookings/${id}`);
+  const res = await fetch(`${API_URL}/bookings/${id}`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  if (!res.ok) {
+    const error = await res.json();
+    console.error(`Website API Error: GET /bookings/${id}`, error);
     throw new Error("Booking could not get loaded");
   }
 
+  const data = await res.json();
+  if (data.cabins) data.cabins = mapCabinImage(data.cabins);
+  console.log(`Website API Response: GET /bookings/${id}`, data);
   return data;
 }
 
-export async function getBookings(guestId) {
-  const { data, error, count } = await supabase
-    .from("bookings")
-    // We actually also need data on the cabins as well. But let's ONLY take the data that we actually need, in order to reduce downloaded data.
-    .select(
-      "id, created_at, startDate, endDate, numNights, numGuests, totalPrice, guestId, cabinId, cabins(name, image)"
-    )
-    .eq("guestId", guestId)
-    .order("startDate");
+export async function getBookings(token) {
+  if (!token) return [];
 
-  if (error) {
-    console.error(error);
+  console.log(`Website API Request: GET /bookings/guest`);
+  const res = await fetch(`${API_URL}/bookings/guest`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  if (!res.ok) {
+    const error = await res.json();
+    console.error(`Website API Error: GET /bookings/guest`, error);
     throw new Error("Bookings could not get loaded");
   }
 
+  const data = await res.json();
+  const mappedData = data.map(booking => {
+    if (booking.cabins) booking.cabins = mapCabinImage(booking.cabins);
+    return booking;
+  });
+  console.log(`Website API Response: GET /bookings/guest`, mappedData);
+  return mappedData;
+}
+
+export async function getSettings() {
+  const res = await fetch(`${API_URL}/settings`);
+  if (!res.ok) throw new Error("Settings could not be loaded");
+  return await res.json();
+}
+
+export async function createGuest(newGuest) {
+  const body = JSON.stringify({ 
+    idToken: newGuest.idToken,
+    email: newGuest.email, 
+    fullName: newGuest.fullName 
+  });
+  console.log(`Website API Request: POST /auth/guest/google`, body);
+
+  const res = await fetch(`${API_URL}/auth/guest/google`, {
+     method: "POST",
+     headers: { "Content-Type": "application/json" },
+     body
+  });
+  if (!res.ok) {
+    const error = await res.json();
+    console.error(`Website API Error: POST /auth/guest/google`, error);
+    throw new Error("Guest could not be created");
+  }
+  const data = await res.json();
+  console.log(`Website API Response: POST /auth/guest/google`, data);
   return data;
 }
 
 export async function getBookedDatesByCabinId(cabinId) {
-  let today = new Date();
-  today.setUTCHours(0, 0, 0, 0);
-  today = today.toISOString();
-
-  // Getting all bookings
-  const { data, error } = await supabase
-    .from("bookings")
-    .select("*")
-    .eq("cabinId", cabinId)
-    .or(`startDate.gte.${today},status.eq.checked-in`);
-
-  if (error) {
-    console.error(error);
-    throw new Error("Bookings could not get loaded");
-  }
-
-  // Converting to actual dates to be displayed in the date picker
-  const bookedDates = data
-    .map((booking) => {
-      return eachDayOfInterval({
-        start: new Date(booking.startDate),
-        end: new Date(booking.endDate),
-      });
-    })
-    .flat();
+  const res = await fetch(`${API_URL}/bookings/cabin/${cabinId}/booked-dates`);
+  if (!res.ok) return [];
+  const bookings = await res.json();
+  
+  // Convert booking ranges to individual dates as expected by the frontend
+  const bookedDates = bookings.flatMap((booking) => {
+    const range = [];
+    let currentDate = new Date(booking.startDate);
+    const endDate = new Date(booking.endDate);
+    
+    while (currentDate <= endDate) {
+      range.push(new Date(currentDate));
+      currentDate.setDate(currentDate.getDate() + 1);
+    }
+    return range;
+  });
 
   return bookedDates;
 }
 
-export async function getSettings() {
-  const { data, error } = await supabase.from("settings").select("*").single();
-  // await new Promise((res) => setTimeout(res, 5000));
-  if (error) {
-    console.error(error);
-    throw new Error("Settings could not be loaded");
-  }
-
-  return data;
-}
-
+// ... other functions similar mapping ...
 export async function getCountries() {
   try {
-    const res = await fetch(
-      "https://restcountries.com/v2/all?fields=name,flag"
-    );
+    const res = await fetch("https://restcountries.com/v2/all?fields=name,flag");
     const countries = await res.json();
     return countries;
   } catch {
     throw new Error("Could not fetch countries");
   }
-}
-
-/////////////
-// CREATE
-
-export async function createGuest(newGuest) {
-  const { data, error } = await supabase.from("guests").insert([newGuest]);
-
-  if (error) {
-    console.error(error);
-    throw new Error("Guest could not be created");
-  }
-
-  return data;
-}
-
-export async function createBooking(newBooking) {
-  const { data, error } = await supabase
-    .from("bookings")
-    .insert([newBooking])
-    // So that the newly created object gets returned!
-    .select()
-    .single();
-
-  if (error) {
-    console.error(error);
-    throw new Error("Booking could not be created");
-  }
-
-  return data;
-}
-
-/////////////
-// UPDATE
-
-// The updatedFields is an object which should ONLY contain the updated data
-export async function updateGuest(id, updatedFields) {
-  const { data, error } = await supabase
-    .from("guests")
-    .update(updatedFields)
-    .eq("id", id)
-    .select()
-    .single();
-
-  if (error) {
-    console.error(error);
-    throw new Error("Guest could not be updated");
-  }
-  return data;
-}
-
-export async function updateBooking(id, updatedFields) {
-  const { data, error } = await supabase
-    .from("bookings")
-    .update(updatedFields)
-    .eq("id", id)
-    .select()
-    .single();
-
-  if (error) {
-    console.error(error);
-    throw new Error("Booking could not be updated");
-  }
-  return data;
-}
-
-/////////////
-// DELETE
-
-export async function deleteBooking(id) {
-  const { data, error } = await supabase.from("bookings").delete().eq("id", id);
-
-  if (error) {
-    console.error(error);
-    throw new Error("Booking could not be deleted");
-  }
-  return data;
 }
