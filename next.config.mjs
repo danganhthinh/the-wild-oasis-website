@@ -13,6 +13,12 @@ const remotePatterns = [
     port: "",
     pathname: "/storage/v1/object/public/cabin-images/**",
   },
+  {
+    protocol: "https",
+    hostname: "res.cloudinary.com",
+    port: "",
+    pathname: "/**",
+  },
 ];
 
 if (apiUrl) {
